@@ -14,22 +14,22 @@ let originalExpoNoCache: string | undefined;
 describe(downloadFileWithProgressTrackerAsync, () => {
   beforeEach(async () => {
     tempHome = await mkTempDirAsync();
-    originalExpoHomeDirectory = process.env.__UNSAFE_EXPO_HOME_DIRECTORY;
-    originalExpoNoCache = process.env.EXPO_NO_CACHE;
+    originalExpoHomeDirectory = process.env['__UNSAFE_EXPO_HOME_DIRECTORY'];
+    originalExpoNoCache = process.env['EXPO_NO_CACHE'];
     originalFetch = globalThis.fetch;
-    process.env.__UNSAFE_EXPO_HOME_DIRECTORY = path.join(tempHome, '.expo');
+    process.env['__UNSAFE_EXPO_HOME_DIRECTORY'] = path.join(tempHome, '.expo');
   });
 
   afterEach(async () => {
     if (originalExpoHomeDirectory === undefined) {
-      delete process.env.__UNSAFE_EXPO_HOME_DIRECTORY;
+      delete process.env['__UNSAFE_EXPO_HOME_DIRECTORY'];
     } else {
-      process.env.__UNSAFE_EXPO_HOME_DIRECTORY = originalExpoHomeDirectory;
+      process.env['__UNSAFE_EXPO_HOME_DIRECTORY'] = originalExpoHomeDirectory;
     }
     if (originalExpoNoCache === undefined) {
-      delete process.env.EXPO_NO_CACHE;
+      delete process.env['EXPO_NO_CACHE'];
     } else {
-      process.env.EXPO_NO_CACHE = originalExpoNoCache;
+      process.env['EXPO_NO_CACHE'] = originalExpoNoCache;
     }
     globalThis.fetch = originalFetch;
     mock.restore();
@@ -96,7 +96,7 @@ describe(downloadFileWithProgressTrackerAsync, () => {
     );
 
     try {
-      process.env.EXPO_NO_CACHE = '1';
+      process.env['EXPO_NO_CACHE'] = '1';
       globalThis.fetch = mock(async () => {
         return new Response('downloaded', {
           headers: { 'content-length': '10' },

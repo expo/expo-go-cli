@@ -1,6 +1,6 @@
 # expo-go
 
-Download Expo Go binaries, or print the resolved download URL, from a tiny standalone CLI.
+Download Expo Go binaries, or print the resolved download URL, from a tiny standalone CLI (smaller than 44 KB, with no runtime dependencies).
 
 ## Usage
 

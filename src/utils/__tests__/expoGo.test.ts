@@ -36,11 +36,11 @@ describe('expoGo utils', () => {
   beforeEach(async () => {
     tempHome = await mkTempDirAsync();
     originalFetch = globalThis.fetch;
-    originalExpoHomeDirectory = process.env.__UNSAFE_EXPO_HOME_DIRECTORY;
-    originalHome = process.env.HOME;
+    originalExpoHomeDirectory = process.env['__UNSAFE_EXPO_HOME_DIRECTORY'];
+    originalHome = process.env['HOME'];
     originalCwd = process.cwd();
-    process.env.__UNSAFE_EXPO_HOME_DIRECTORY = path.join(tempHome, '.expo');
-    process.env.HOME = tempHome;
+    process.env['__UNSAFE_EXPO_HOME_DIRECTORY'] = path.join(tempHome, '.expo');
+    process.env['HOME'] = tempHome;
     process.chdir(tempHome);
     globalThis.fetch = mock(async () => {
       return new Response(JSON.stringify({ data: versions }), {
@@ -56,14 +56,14 @@ describe('expoGo utils', () => {
     process.chdir(originalCwd);
     globalThis.fetch = originalFetch;
     if (originalHome === undefined) {
-      delete process.env.HOME;
+      delete process.env['HOME'];
     } else {
-      process.env.HOME = originalHome;
+      process.env['HOME'] = originalHome;
     }
     if (originalExpoHomeDirectory === undefined) {
-      delete process.env.__UNSAFE_EXPO_HOME_DIRECTORY;
+      delete process.env['__UNSAFE_EXPO_HOME_DIRECTORY'];
     } else {
-      process.env.__UNSAFE_EXPO_HOME_DIRECTORY = originalExpoHomeDirectory;
+      process.env['__UNSAFE_EXPO_HOME_DIRECTORY'] = originalExpoHomeDirectory;
     }
     mock.restore();
     await rm(tempHome, { force: true, recursive: true });
