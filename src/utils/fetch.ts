@@ -10,19 +10,15 @@ import { getExpoHomeDirectory } from './paths';
 export type { FetchLike, ProgressCallback };
 
 export function createFetch({
-  fetch: fetchInstance = fetch as FetchLike,
   cacheDirectory,
   ttl,
-  skipCache,
 }: {
-  fetch?: FetchLike;
   cacheDirectory: string;
   ttl?: number;
-  skipCache?: boolean;
 }): FetchLike {
-  const fetchWithProgress = wrapFetchWithProgress(fetchInstance);
+  const fetchWithProgress = wrapFetchWithProgress(fetch as FetchLike);
 
-  if (skipCache || env.EXPO_BETA || env.EXPO_NO_CACHE) {
+  if (env.EXPO_BETA || env.EXPO_NO_CACHE) {
     return fetchWithProgress;
   }
 

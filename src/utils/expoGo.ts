@@ -1,25 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { cp, lstat, mkdir, readdir, rm, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import path from 'node:path';
+import path, { basename, join } from 'node:path';
 
 import { apiGetAsync } from '../api';
 import Log from '../log';
-import { bold } from '../style';
 import { createFetch } from './fetch';
 import * as downloadUtils from './download';
-import type { FetchLike } from './download';
 import { formatBytes } from './files';
-import { getExpoHomeDirectory, getTmpDirectory } from './paths';
+import { formatHomePath, getExpoHomeDirectory, getTmpDirectory } from './paths';
+import { cwd } from 'node:process';
+import { extractAsync } from './tar';
 
 export type ExpoGoPlatform = 'ios' | 'android';
 
 export type SDKVersion = {
   iosClientUrl?: string;
   androidClientUrl?: string;
-  iosClientVersion?: string;
-  androidClientVersion?: string;
-  beta?: boolean;
   [key: string]: unknown;
 };
 
@@ -58,14 +54,6 @@ function getUrlBasename(url: string): string {
   }
 }
 
-function formatHomePath(filePath: string): string {
-  const homeDirectory = homedir();
-  if (!homeDirectory || !filePath.startsWith(homeDirectory)) {
-    return filePath;
-  }
-  return path.join('~', path.relative(homeDirectory, filePath));
-}
-
 async function pathExistsAsync(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
@@ -75,28 +63,7 @@ async function pathExistsAsync(filePath: string): Promise<boolean> {
   }
 }
 
-function getSdkVersionNumber(sdkVersion: string): number | null {
-  const version = parseInt(sdkVersion, 10);
-  return Number.isNaN(version) ? null : version;
-}
-
-export function isSdkVersionInput(value: string): boolean {
-  return value === 'latest' || getSdkVersionNumber(value) !== null;
-}
-
-function normalizeSdkVersionInput(sdkVersion: string): string {
-  const version = getSdkVersionNumber(sdkVersion);
-  if (version === null) {
-    throw new Error(`Expected "${sdkVersion}" to be an Expo SDK version or "latest".`);
-  }
-  return `${version}.0.0`;
-}
-
-function normalizeSdkVersionInputOrLatest(sdkVersion: string): string {
-  return sdkVersion === 'latest' ? sdkVersion : normalizeSdkVersionInput(sdkVersion);
-}
-
-export async function getVersionsAsync(): Promise<ExpoVersions> {
+async function getVersionsAsync(): Promise<ExpoVersions> {
   const response = await apiGetAsync('versions/latest', {
     fetch: createFetch({
       cacheDirectory: 'versions-cache',
@@ -117,73 +84,41 @@ export async function getVersionsAsync(): Promise<ExpoVersions> {
 }
 
 export function getLatestSdkVersion(sdkVersions: Record<string, SDKVersion>): string {
-  const latestVersion = Object.keys(sdkVersions).reduce<string | null>((latest, version) => {
-    const sdkVersionNumber = getSdkVersionNumber(version);
-    if (sdkVersionNumber === null) {
-      return latest;
-    }
+  const intVersions = Object.keys(sdkVersions).map((v) => parseInt(v, 10)).filter(isFinite);
+  const latestVersion = Math.max(...intVersions);
 
-    const latestSdkVersionNumber = latest ? getSdkVersionNumber(latest) : null;
-    return latestSdkVersionNumber === null || sdkVersionNumber > latestSdkVersionNumber
-      ? version
-      : latest;
-  }, null);
-
-  if (!latestVersion) {
+  if (!isFinite(latestVersion)) {
     throw new Error('Unable to find a version of Expo Go.');
   }
-  return latestVersion;
-}
 
-export function getExpoGoVersionEntryFromVersions(
-  sdkVersion: string,
-  versions: ExpoVersions
-): { sdkVersion: string; version: SDKVersion } {
-  const resolvedSdkVersion = sdkVersion === 'latest'
-    ? getLatestSdkVersion(versions.sdkVersions)
-    : normalizeSdkVersionInput(sdkVersion);
-
-  const version = versions.sdkVersions[resolvedSdkVersion];
-  if (!version) {
-    throw new Error(`Unable to find a version of Expo Go for SDK ${resolvedSdkVersion}`);
-  }
-  return { sdkVersion: resolvedSdkVersion, version };
-}
-
-export async function getExpoGoVersionEntryAsync(
-  sdkVersion: string
-): Promise<{ sdkVersion: string; version: SDKVersion }> {
-  return getExpoGoVersionEntryFromVersions(sdkVersion, await getVersionsAsync());
+  return `${latestVersion}.0.0`;
 }
 
 export async function getExpoGoDownloadUrlAsync(
   platform: ExpoGoPlatform,
-  {
-    sdkVersion,
-  }: {
-    sdkVersion?: string;
-  } = {}
-): Promise<{ sdkVersion: string; url: string }> {
-  const versions = await getVersionsAsync();
-  const resolvedSdkVersion = sdkVersion ?? 'latest';
-  const { sdkVersion: matchingSdkVersion, version } = getExpoGoVersionEntryFromVersions(
-    resolvedSdkVersion,
-    versions
-  );
-  const versionsKey = platformSettings[platform].versionsKey;
-  const url = version[versionsKey];
+  sdkVersion: 'latest' | number,
+): Promise<string> {
+  const { sdkVersions } = await getVersionsAsync();
+  const normalizedSdkVersion = sdkVersion === 'latest'
+    ? getLatestSdkVersion(sdkVersions)
+    : `${sdkVersion}.0.0`;
+
+  const versionMetadata = sdkVersions[normalizedSdkVersion];
+  if (!versionMetadata) {
+    throw new Error(`Unable to find a version of Expo Go for SDK ${normalizedSdkVersion}`);
+  }
+
+  const url = versionMetadata[platformSettings[platform].versionsKey];
   if (typeof url !== 'string' || !url) {
     throw new Error(
-      `Unable to find an Expo Go ${platform} download URL for SDK ${matchingSdkVersion}`
+      `Unable to find an Expo Go ${platform} download URL for SDK ${normalizedSdkVersion}`
     );
   }
-  return { sdkVersion: matchingSdkVersion, url };
+
+  return url;
 }
 
-export async function cleanupOldExpoGoCacheEntriesAsync(
-  cacheDirectory: string,
-  maxAgeMs: number = SIX_MONTHS_IN_MS
-): Promise<void> {
+async function cleanupOldExpoGoCacheEntriesAsync(cacheDirectory: string): Promise<void> {
   let cacheEntries: string[];
   try {
     cacheEntries = await readdir(cacheDirectory);
@@ -196,7 +131,7 @@ export async function cleanupOldExpoGoCacheEntriesAsync(
     const filePath = path.join(cacheDirectory, entry);
     try {
       const fileStat = await lstat(filePath);
-      if (now - fileStat.mtimeMs > maxAgeMs) {
+      if (now - fileStat.mtimeMs > SIX_MONTHS_IN_MS) {
         Log.debug(`Removing old Expo Go cache entry: ${filePath}`);
         await rm(filePath, { force: true, recursive: true });
       }
@@ -208,38 +143,28 @@ export async function cleanupOldExpoGoCacheEntriesAsync(
 
 export async function downloadExpoGoAsync(
   platform: ExpoGoPlatform,
-  {
-    sdkVersion,
-    url,
-  }: {
-    sdkVersion?: string;
-    url?: string;
-  } = {}
-): Promise<{ path: string; sdkVersion: string; url: string }> {
-  const result = url
-    ? {
-        sdkVersion: sdkVersion ? normalizeSdkVersionInputOrLatest(sdkVersion) : 'unknown',
-        url,
-      }
-    : await getExpoGoDownloadUrlAsync(platform, { sdkVersion });
+  sdkVersion: 'latest' | number,
+): Promise<string> {
+  const url = await getExpoGoDownloadUrlAsync(platform, sdkVersion);
 
   const { getFilePath, shouldExtractResults } = platformSettings[platform];
-  const filename = path.parse(getUrlBasename(result.url)).name;
-  const outputPath = getFilePath(filename);
+  const filename = path.parse(getUrlBasename(url)).name;
+  const cachedPath = getFilePath(filename);
+  const outputPath = join(cwd(), basename(cachedPath));
 
-  await cleanupOldExpoGoCacheEntriesAsync(path.dirname(outputPath));
-  if (await pathExistsAsync(outputPath)) {
-    Log.log(`Using cached version from ${bold(formatHomePath(path.dirname(outputPath)))}`);
-    return { ...result, path: outputPath };
+  await cleanupOldExpoGoCacheEntriesAsync(path.dirname(cachedPath));
+  if (await pathExistsAsync(cachedPath)) {
+    Log.log(`Using cached version from ${formatHomePath(path.dirname(cachedPath))}`);
+    return forceCopyAsync({ sourcePath: cachedPath, outputPath });
   }
 
   await downloadAppAsync({
     extract: shouldExtractResults,
-    outputPath,
-    url: result.url,
+    outputPath: cachedPath,
+    url,
   });
 
-  return { ...result, path: outputPath };
+  return forceCopyAsync({ sourcePath: cachedPath, outputPath });
 }
 
 async function downloadAppAsync({
@@ -251,7 +176,7 @@ async function downloadAppAsync({
   outputPath: string;
   extract: boolean;
 }): Promise<void> {
-  const fetchInstance: FetchLike = createFetch({
+  const fetchInstance = createFetch({
     cacheDirectory: 'expo-go',
     ttl: ONE_WEEK_IN_MS,
   });
@@ -267,12 +192,13 @@ async function downloadAppAsync({
       tmpPath,
       progressMessage,
       'Successfully downloaded Expo Go',
-      { showNewLine: false, fetch: fetchInstance }
+      { fetch: fetchInstance }
     );
 
     await rm(outputPath, { force: true, recursive: true });
     await mkdir(outputPath, { recursive: true });
-    await downloadUtils.extractArchiveAsync(tmpPath, outputPath);
+    await extractAsync(tmpPath, outputPath);
+    await rm(tmpDir, { force: true, recursive: true });
   } else {
     await mkdir(path.dirname(outputPath), { recursive: true });
     await downloadUtils.downloadFileWithProgressTrackerAsync(
@@ -280,26 +206,18 @@ async function downloadAppAsync({
       outputPath,
       progressMessage,
       'Successfully downloaded Expo Go',
-      { showNewLine: false, fetch: fetchInstance }
+      { fetch: fetchInstance }
     );
   }
 }
 
-export async function copyExpoGoToPathAsync({
-  destinationPath,
-  platform,
+async function forceCopyAsync({
+  outputPath,
   sourcePath,
 }: {
-  destinationPath?: string;
-  platform: ExpoGoPlatform;
+  outputPath: string;
   sourcePath: string;
 }): Promise<string> {
-  const outputPath = await resolveExpoGoOutputPathAsync({
-    destinationPath,
-    platform,
-    sourcePath,
-  });
-
   if (path.resolve(sourcePath) === path.resolve(outputPath)) {
     return outputPath;
   }
@@ -308,31 +226,4 @@ export async function copyExpoGoToPathAsync({
   await rm(outputPath, { force: true, recursive: true });
   await cp(sourcePath, outputPath, { recursive: true });
   return outputPath;
-}
-
-async function resolveExpoGoOutputPathAsync({
-  destinationPath,
-  platform,
-  sourcePath,
-}: {
-  destinationPath?: string;
-  platform: ExpoGoPlatform;
-  sourcePath: string;
-}): Promise<string> {
-  if (!destinationPath) {
-    return path.join(process.cwd(), path.basename(sourcePath));
-  }
-
-  const resolvedDestinationPath = path.resolve(destinationPath);
-  const extension = platformSettings[platform].extension;
-  if (resolvedDestinationPath.endsWith(`.${extension}`)) {
-    return resolvedDestinationPath;
-  }
-
-  const destinationStat = await stat(resolvedDestinationPath).catch(() => null);
-  if (!destinationStat || destinationStat.isDirectory()) {
-    return path.join(resolvedDestinationPath, path.basename(sourcePath));
-  }
-
-  return resolvedDestinationPath;
 }

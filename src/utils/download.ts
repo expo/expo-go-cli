@@ -6,11 +6,6 @@ import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import type { FetchLike, ProgressCallback } from './fetch';
-// Mirrors @expo/cli's standalone tar extraction utility:
-// https://github.com/expo/expo/blob/2c21e2f96ce6aede3d6bb5c780f0964d2116d37b/packages/@expo/cli/src/utils/tar.ts#L136-L146
-import { extractAsync } from './tar';
-
-export type { FetchLike };
 
 const PROGRESS_RENDER_INTERVAL_MS = 100;
 
@@ -19,7 +14,7 @@ export async function downloadFileWithProgressTrackerAsync(
   outputPath: string,
   progressTrackerMessage: string | ((ratio: number, total: number) => string),
   progressTrackerCompletedMessage: string,
-  { showNewLine = true, fetch: fetchInstance = fetch }: { showNewLine?: boolean; fetch?: FetchLike } = {}
+  { fetch: fetchInstance }: { fetch: FetchLike }
 ): Promise<void> {
   let didRenderProgress = false;
   let didReceiveFetchProgress = false;
@@ -28,17 +23,14 @@ export async function downloadFileWithProgressTrackerAsync(
     if (!process.stderr.isTTY) {
       return;
     }
-    if (!didRenderProgress && showNewLine) {
-      process.stderr.write('\n');
-    }
     didRenderProgress = true;
     clearLine(process.stderr, 0);
     cursorTo(process.stderr, 0);
     process.stderr.write(message);
   };
-  const maybeRenderProgress = (message: string, isFinal = false): void => {
+  const maybeRenderProgress = (message: string, { force = false }: { force?: boolean } = {}): void => {
     const now = Date.now();
-    if (!isFinal && now - lastProgressRenderTime < PROGRESS_RENDER_INTERVAL_MS) {
+    if (!force && now - lastProgressRenderTime < PROGRESS_RENDER_INTERVAL_MS) {
       return;
     }
     lastProgressRenderTime = now;
@@ -50,7 +42,7 @@ export async function downloadFileWithProgressTrackerAsync(
     }
     maybeRenderProgress(
       progressTrackerMessage(Math.min(loaded / total, 1), total),
-      loaded >= total
+      { force: loaded >= total }
     );
   };
   const onProgress: ProgressCallback | undefined =
@@ -109,8 +101,4 @@ export async function downloadFileWithProgressTrackerAsync(
     await rm(outputPath, { force: true, recursive: true });
     throw error;
   }
-}
-
-export async function extractArchiveAsync(input: string, output: string): Promise<void> {
-  await extractAsync(input, output);
 }

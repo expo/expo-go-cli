@@ -1,4 +1,4 @@
-export function boolish(name: string, fallback = false): boolean {
+export function boolish(name: string, fallback: boolean): boolean {
   const value = process.env[name];
 
   if (value === undefined) {
@@ -14,16 +14,13 @@ export function boolish(name: string, fallback = false): boolean {
   throw new Error(`GetEnv.NoBoolean: ${value} is not a boolean.`);
 }
 
-function string(name: string, fallback = ''): string {
+function string(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
 export const env = {
   get EXPO_GO_DEBUG(): boolean {
     return boolish('EXPO_GO_DEBUG', false);
-  },
-  get NO_COLOR(): boolean {
-    return boolish('NO_COLOR');
   },
   get __UNSAFE_EXPO_HOME_DIRECTORY(): string {
     return string('__UNSAFE_EXPO_HOME_DIRECTORY', '');

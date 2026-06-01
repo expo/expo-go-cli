@@ -1,3 +1,6 @@
+// Adapted from @expo/cli's tar utility tests:
+// https://github.com/expo/expo/blob/2c21e2f96ce6aede3d6bb5c780f0964d2116d37b/packages/@expo/cli/src/utils/__tests__/tar-test.ts#L1-L31
+
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { tar, TarChunk, TarFile, TarTypeFlag } from 'multitars';
 import * as childProcess from 'node:child_process';
@@ -8,9 +11,6 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { gzipSync } from 'node:zlib';
 
-import Log from '../../log';
-// Adapted from @expo/cli's tar utility tests:
-// https://github.com/expo/expo/blob/2c21e2f96ce6aede3d6bb5c780f0964d2116d37b/packages/@expo/cli/src/utils/__tests__/tar-test.ts#L1-L31
 import { extractAsync, extractStream } from '../tar';
 
 let tempHome: string;
@@ -18,7 +18,6 @@ let tempHome: string;
 describe(extractAsync, () => {
   beforeEach(async () => {
     tempHome = await mkTempDirAsync();
-    spyOn(Log, 'warn').mockImplementation(() => {});
   });
 
   afterEach(async () => {
@@ -39,7 +38,6 @@ describe(extractAsync, () => {
     await extractAsync(archivePath, outputPath);
 
     expect(spawnSpy).not.toHaveBeenCalled();
-    expect(Log.warn).not.toHaveBeenCalled();
     expect(await readFile(path.join(outputPath, 'Expo.app', 'Info.plist'), 'utf8')).toBe('plist');
   });
 

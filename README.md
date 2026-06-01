@@ -6,7 +6,7 @@ Download Expo Go binaries, or print the resolved download URL, from a tiny stand
 
 ```bash
 npx expo-go url <ios|android> [sdkVersion|latest]
-npx expo-go download <ios|android> [sdkVersion|latest] [outputPath]
+npx expo-go download <ios|android> [sdkVersion|latest]
 ```
 
 Examples:
@@ -14,18 +14,16 @@ Examples:
 ```bash
 npx expo-go url android 55
 npx expo-go url ios latest
-npx expo-go download android 55 ./downloads
-npx expo-go download ios latest ./ExpoGo.app
+npx expo-go download android 55
+npx expo-go download ios latest
 ```
 
-When no SDK version is provided, the CLI uses the latest Expo Go version. If you want to pass an output path without choosing a specific SDK, pass `latest` as the SDK argument.
+When no SDK version is provided, the CLI uses the latest Expo Go version. Downloads are saved in the current directory with their resolved Expo Go filename.
 
 Downloaded binaries are cached under the Expo home directory:
 
 - Android APKs: `~/.expo/android-apk-cache`
 - iOS simulator apps: `~/.expo/ios-simulator-app-cache`
-
-Expo API and download responses are cached under `~/.expo/versions-cache` and `~/.expo/expo-go`. Set `EXPO_NO_CACHE=1` to skip response caching.
 
 ## Commands
 
@@ -39,10 +37,10 @@ npx expo-go url android 55
 
 ### `expo-go download`
 
-Downloads Expo Go for a platform and optional SDK version, then copies it to the requested output path. If the output path is a directory, the downloaded file or app bundle keeps its resolved Expo Go filename.
+Downloads Expo Go for a platform and optional SDK version into the current directory.
 
 ```bash
-npx expo-go download android latest ./downloads
+npx expo-go download android latest
 ```
 
 ## Development

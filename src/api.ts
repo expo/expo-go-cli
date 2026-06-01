@@ -1,7 +1,7 @@
 import type { FetchLike } from './utils/fetch';
 import { env } from './utils/env';
 
-export function getExpoApiBaseUrl(): string {
+function getExpoApiBaseUrl(): string {
   if (env.EXPO_STAGING) {
     return 'https://staging-api.expo.dev';
   } else if (env.EXPO_LOCAL) {
@@ -12,7 +12,7 @@ export function getExpoApiBaseUrl(): string {
 
 export async function apiGetAsync(
   path: string,
-  { fetch: fetchAsync = fetch as FetchLike }: { fetch?: FetchLike } = {}
+  { fetch: fetchAsync }: { fetch: FetchLike }
 ): Promise<unknown> {
   const response = await fetchAsync(`${getExpoApiBaseUrl()}/v2/${path}`, {
     headers: {

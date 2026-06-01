@@ -1,112 +1,92 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { runCliAsync, type CliDependencies } from '../cli';
+import { runCliAsync } from '../cli';
+import Log from '../log';
+import * as expoGo from '../utils/expoGo';
 
-function createDeps(calls: string[] = []): CliDependencies {
-  return {
-    copyExpoGoToPathAsync: mock(async () => {
-      calls.push('copy');
-      return '/output/Exponent-55.apk';
-    }),
-    downloadExpoGoAsync: mock(async () => {
-      calls.push('download');
-      return {
-        path: '/cache/Exponent-55.apk',
-        sdkVersion: '55.0.0',
-        url: 'https://example.com/Exponent-55.apk',
-      };
-    }),
-    getExpoGoDownloadUrlAsync: mock(async () => {
-      calls.push('get-url');
-      return {
-        sdkVersion: '55.0.0',
-        url: 'https://example.com/Exponent-55.apk',
-      };
-    }),
-    log: mock(() => {}),
-    warn: mock(message => {
-      calls.push(`warn:${message}`);
-    }),
-  };
-}
+const calls: string[] = [];
+
+beforeEach(() => {
+  calls.length = 0;
+  spyOn(Log, 'log').mockImplementation(message => {
+    calls.push(`log:${message}`);
+  });
+  spyOn(Log, 'rawLog').mockImplementation(message => {
+    calls.push(`raw:${message}`);
+  });
+  spyOn(Log, 'out').mockImplementation(message => {
+    calls.push(`out:${message}`);
+  });
+});
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe('url', () => {
   it('prints the resolved Expo Go URL for the platform and SDK version', async () => {
-    const calls: string[] = [];
-    const deps = createDeps(calls);
+    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockImplementation(
+      async () => {
+        calls.push('get-url');
+        return 'https://example.com/Exponent-55.apk';
+      }
+    );
 
-    await runCliAsync(['url', 'android', '55'], deps, { exitOverride: true, from: 'user' });
+    await runCliAsync(['url', 'android', '55']);
 
-    expect(calls.slice(0, 2)).toEqual([
-      'warn:Resolving the correct Expo Go version...',
+    expect(calls).toEqual([
+      'log:Resolving the correct Expo Go version...',
       'get-url',
+      'raw:Download Expo Go from ',
+      'out:https://example.com/Exponent-55.apk',
     ]);
-    expect(deps.getExpoGoDownloadUrlAsync).toHaveBeenCalledWith('android', {
-      sdkVersion: '55',
-    });
-    expect(deps.log).toHaveBeenCalledWith('https://example.com/Exponent-55.apk');
+    expect(getUrlSpy).toHaveBeenCalledWith('android', 55);
+    expect(Log.out).toHaveBeenCalledWith('https://example.com/Exponent-55.apk');
   });
 
   it('rejects an SDK version that is not parsable by parseInt or exact "latest"', async () => {
-    const calls: string[] = [];
-    const deps = createDeps(calls);
-
-    await expect(
-      runCliAsync(['url', 'ios', 'LATEST'], deps, { exitOverride: true, from: 'user' })
-    ).rejects.toThrow('Expected "LATEST" to be an Expo SDK version or "latest".');
+    expect(runCliAsync(['url', 'ios', 'LATEST'])).rejects.toThrow(
+      'Expected "LATEST" to be an Expo SDK version or "latest".'
+    );
 
     expect(calls).toEqual([]);
   });
 });
 
 describe('download', () => {
-  it('downloads an explicit SDK version to an explicit output path', async () => {
-    const calls: string[] = [];
-    const deps = createDeps(calls);
+  it('downloads an explicit SDK version to the current directory', async () => {
+    const downloadSpy = mockDownloadExpoGoAsync();
 
-    await runCliAsync(['download', 'android', '55', '/output'], deps, {
-      exitOverride: true,
-      from: 'user',
-    });
+    await runCliAsync(['download', 'android', '55']);
 
-    expect(calls.slice(0, 2)).toEqual([
-      'warn:Resolving the correct Expo Go version...',
+    expect(calls).toEqual([
+      'log:Resolving the correct Expo Go version...',
       'download',
+      'raw:Expo Go downloaded to ',
+      'out:/output/Exponent-55.apk',
     ]);
-    expect(deps.downloadExpoGoAsync).toHaveBeenCalledWith('android', {
-      sdkVersion: '55',
-    });
-    expect(deps.copyExpoGoToPathAsync).toHaveBeenCalledWith({
-      destinationPath: '/output',
-      platform: 'android',
-      sourcePath: '/cache/Exponent-55.apk',
-    });
-    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('/output/Exponent-55.apk'));
+    expect(downloadSpy).toHaveBeenCalledWith('android', 55);
+    expect(Log.out).toHaveBeenCalledWith('/output/Exponent-55.apk');
   });
 
-  it('downloads the latest Expo Go to an output path when "latest" is passed', async () => {
-    const deps = createDeps();
+  it('downloads the latest Expo Go when "latest" is passed', async () => {
+    const downloadSpy = mockDownloadExpoGoAsync();
 
-    await runCliAsync(['download', 'ios', 'latest', '/output'], deps, {
-      exitOverride: true,
-      from: 'user',
-    });
+    await runCliAsync(['download', 'ios', 'latest']);
 
-    expect(deps.downloadExpoGoAsync).toHaveBeenCalledWith('ios', {
-      sdkVersion: 'latest',
-    });
-    expect(deps.copyExpoGoToPathAsync).toHaveBeenCalledWith({
-      destinationPath: '/output',
-      platform: 'ios',
-      sourcePath: '/cache/Exponent-55.apk',
-    });
+    expect(downloadSpy).toHaveBeenCalledWith('ios', 'latest');
   });
 
   it('rejects a second argument that is not an SDK version', async () => {
-    const deps = createDeps();
-
-    await expect(
-      runCliAsync(['download', 'ios', '/output'], deps, { exitOverride: true, from: 'user' })
-    ).rejects.toThrow('Expected "/output" to be an Expo SDK version or "latest"');
+    expect(runCliAsync(['download', 'ios', '/output'])).rejects.toThrow(
+      'Expected "/output" to be an Expo SDK version or "latest"'
+    );
   });
 });
+
+function mockDownloadExpoGoAsync(): ReturnType<typeof mock<typeof expoGo.downloadExpoGoAsync>> {
+  return spyOn(expoGo, 'downloadExpoGoAsync').mockImplementation(async () => {
+    calls.push('download');
+    return '/output/Exponent-55.apk';
+  });
+}

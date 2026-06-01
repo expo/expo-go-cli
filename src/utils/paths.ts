@@ -26,3 +26,11 @@ export function getExpoHomeDirectory(): string {
 export function getTmpDirectory(): string {
   return path.join(tmpdir(), 'expo-go');
 }
+
+export function formatHomePath(filePath: string): string {
+  const homeDirectory = homedir();
+  if (!homeDirectory || !filePath.startsWith(homeDirectory)) {
+    return filePath;
+  }
+  return path.join('~', path.relative(homeDirectory, filePath));
+}

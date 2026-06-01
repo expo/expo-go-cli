@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 
 import { runCliAsync } from './src/cli';
-
-export * from './src/cli';
-export * from './src/utils/expoGo';
+import { formatErrorMessage } from './src/utils/errors';
 
 if (import.meta.main) {
   try {
-    await runCliAsync(process.argv);
+    await runCliAsync(process.argv.slice(2));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(message);
+    console.error(formatErrorMessage(error));
     process.exitCode = 1;
   }
 }

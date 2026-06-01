@@ -21,7 +21,7 @@ describe(boolish, () => {
   });
 
   it('returns the fallback when the env var is unset', () => {
-    expect(boolish(ENV_NAME)).toBe(false);
+    expect(boolish(ENV_NAME, false)).toBe(false);
     expect(boolish(ENV_NAME, true)).toBe(true);
   });
 
@@ -29,7 +29,7 @@ describe(boolish, () => {
     for (const value of ['true', '1']) {
       process.env[ENV_NAME] = value;
 
-      expect(boolish(ENV_NAME)).toBe(true);
+      expect(boolish(ENV_NAME, false)).toBe(true);
     }
   });
 
@@ -44,6 +44,6 @@ describe(boolish, () => {
   it('throws for non-boolish values', () => {
     process.env[ENV_NAME] = 'yes';
 
-    expect(() => boolish(ENV_NAME)).toThrow('GetEnv.NoBoolean: yes is not a boolean.');
+    expect(() => boolish(ENV_NAME, false)).toThrow('GetEnv.NoBoolean: yes is not a boolean.');
   });
 });

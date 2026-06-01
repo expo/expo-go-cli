@@ -8,11 +8,15 @@ import { downloadFileWithProgressTrackerAsync } from '../download';
 
 let tempHome: string;
 let originalExpoHomeDirectory: string | undefined;
+let originalFetch: typeof fetch;
+let originalExpoNoCache: string | undefined;
 
 describe(downloadFileWithProgressTrackerAsync, () => {
   beforeEach(async () => {
     tempHome = await mkTempDirAsync();
     originalExpoHomeDirectory = process.env.__UNSAFE_EXPO_HOME_DIRECTORY;
+    originalExpoNoCache = process.env.EXPO_NO_CACHE;
+    originalFetch = globalThis.fetch;
     process.env.__UNSAFE_EXPO_HOME_DIRECTORY = path.join(tempHome, '.expo');
   });
 
@@ -22,6 +26,12 @@ describe(downloadFileWithProgressTrackerAsync, () => {
     } else {
       process.env.__UNSAFE_EXPO_HOME_DIRECTORY = originalExpoHomeDirectory;
     }
+    if (originalExpoNoCache === undefined) {
+      delete process.env.EXPO_NO_CACHE;
+    } else {
+      process.env.EXPO_NO_CACHE = originalExpoNoCache;
+    }
+    globalThis.fetch = originalFetch;
     mock.restore();
     await rm(tempHome, { force: true, recursive: true });
   });
@@ -40,14 +50,14 @@ describe(downloadFileWithProgressTrackerAsync, () => {
     );
 
     try {
+      globalThis.fetch = mock(async () => {
+        return new Response('downloaded', {
+          headers: { 'content-length': '10' },
+          status: 200,
+        });
+      }) as unknown as typeof fetch;
       const fetchInstance = createFetch({
         cacheDirectory: 'download-cache-test',
-        fetch: mock(async () => {
-          return new Response('downloaded', {
-            headers: { 'content-length': '10' },
-            status: 200,
-          });
-        }),
       });
       const outputPath = path.join(tempHome, 'Exponent.apk');
 
@@ -56,7 +66,7 @@ describe(downloadFileWithProgressTrackerAsync, () => {
         outputPath,
         (ratio, total) => `Downloading Expo Go (${Math.round(ratio * total)} / ${total})`,
         'Successfully downloaded Expo Go',
-        { fetch: fetchInstance, showNewLine: false }
+        { fetch: fetchInstance }
       );
 
       expect(await readFile(outputPath, 'utf8')).toBe('downloaded');
@@ -86,15 +96,15 @@ describe(downloadFileWithProgressTrackerAsync, () => {
     );
 
     try {
+      process.env.EXPO_NO_CACHE = '1';
+      globalThis.fetch = mock(async () => {
+        return new Response('downloaded', {
+          headers: { 'content-length': '10' },
+          status: 200,
+        });
+      }) as unknown as typeof fetch;
       const fetchInstance = createFetch({
         cacheDirectory: 'download-cache-test',
-        fetch: mock(async () => {
-          return new Response('downloaded', {
-            headers: { 'content-length': '10' },
-            status: 200,
-          });
-        }),
-        skipCache: true,
       });
       const outputPath = path.join(tempHome, 'Exponent-no-cache.apk');
 
@@ -103,7 +113,7 @@ describe(downloadFileWithProgressTrackerAsync, () => {
         outputPath,
         (ratio, total) => `Downloading Expo Go (${Math.round(ratio * total)} / ${total})`,
         'Successfully downloaded Expo Go',
-        { fetch: fetchInstance, showNewLine: false }
+        { fetch: fetchInstance }
       );
 
       expect(await readFile(outputPath, 'utf8')).toBe('downloaded');

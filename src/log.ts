@@ -1,18 +1,27 @@
+import { stderr } from 'node:process';
+import { EOL } from 'node:os';
+
 import { env } from './utils/env';
 
 const Log = {
   debug(message: string): void {
     if (env.EXPO_GO_DEBUG) {
-      console.error(message);
+      stderr.write(message);
+      stderr.write(EOL);
     }
   },
 
   log(message: string): void {
-    console.log(message);
+    stderr.write(message);
+    stderr.write(EOL);
   },
 
-  warn(message: string): void {
-    console.warn(message);
+  rawLog(message: string): void {
+    stderr.write(message);
+  },
+
+  out(message: string): void {
+    console.log(message);
   },
 };
 
