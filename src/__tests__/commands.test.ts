@@ -44,6 +44,16 @@ describe('url', () => {
     expect(Log.out).toHaveBeenCalledWith('https://example.com/Exponent-55.apk');
   });
 
+  it('accepts the SDK version before the platform', async () => {
+    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockResolvedValue(
+      'https://example.com/Exponent-55.apk'
+    );
+
+    await runCliAsync(['url', '55', 'android']);
+
+    expect(getUrlSpy).toHaveBeenCalledWith('android', 55);
+  });
+
   it('rejects an SDK version that is not parsable by parseInt or exact "latest"', async () => {
     expect(runCliAsync(['url', 'ios', 'LATEST'])).rejects.toThrow(
       'Expected "LATEST" to be an Expo SDK version or "latest".'
@@ -73,6 +83,14 @@ describe('download', () => {
     const downloadSpy = mockDownloadExpoGoAsync();
 
     await runCliAsync(['download', 'ios', 'latest']);
+
+    expect(downloadSpy).toHaveBeenCalledWith('ios', 'latest');
+  });
+
+  it('accepts the SDK version before the platform', async () => {
+    const downloadSpy = mockDownloadExpoGoAsync();
+
+    await runCliAsync(['download', 'latest', 'ios']);
 
     expect(downloadSpy).toHaveBeenCalledWith('ios', 'latest');
   });

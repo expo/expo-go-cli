@@ -48,6 +48,13 @@ function assertPlatformInput(value: string | undefined): 'ios' | 'android' {
   throw new Error('Expected platform to be "ios" or "android".');
 }
 
+function getPlatformInput(value: string | undefined): 'ios' | 'android' | undefined {
+  if (value === 'ios' || value === 'android') {
+    return value;
+  }
+  return undefined;
+}
+
 function assertSdkVersionInput(
   sdkVersion: string | undefined
 ): 'latest' | number {
@@ -65,6 +72,34 @@ function assertSdkVersionInput(
   return sdkNumber;
 }
 
+function parsePlatformAndSdkVersionArgs(args: string[]): {
+  platform: 'ios' | 'android';
+  sdkVersion: 'latest' | number;
+} {
+  const [firstArg, secondArg] = args;
+  const firstPlatform = getPlatformInput(firstArg);
+  const secondPlatform = getPlatformInput(secondArg);
+
+  if (firstPlatform) {
+    return {
+      platform: firstPlatform,
+      sdkVersion: assertSdkVersionInput(secondArg),
+    };
+  }
+
+  if (secondPlatform) {
+    return {
+      platform: secondPlatform,
+      sdkVersion: assertSdkVersionInput(firstArg),
+    };
+  }
+
+  return {
+    platform: assertPlatformInput(firstArg),
+    sdkVersion: assertSdkVersionInput(secondArg),
+  };
+}
+
 export async function runCliAsync(args: string[]): Promise<void> {
   const [command, ...commandArgs] = args;
   if (!command || isHelpToken(command)) {
@@ -78,8 +113,7 @@ export async function runCliAsync(args: string[]): Promise<void> {
       return;
     }
     assertNoExtraArgs(command, commandArgs, 2);
-    const platform = assertPlatformInput(commandArgs[0]);
-    const sdkVersion = assertSdkVersionInput(commandArgs[1]);
+    const { platform, sdkVersion } = parsePlatformAndSdkVersionArgs(commandArgs);
 
     Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
     const url = await getExpoGoDownloadUrlAsync(platform, sdkVersion);
@@ -94,8 +128,7 @@ export async function runCliAsync(args: string[]): Promise<void> {
       return;
     }
     assertNoExtraArgs(command, commandArgs, 2);
-    const platform = assertPlatformInput(commandArgs[0]);
-    const sdkVersion = assertSdkVersionInput(commandArgs[1]);
+    const { platform, sdkVersion } = parsePlatformAndSdkVersionArgs(commandArgs);
     Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
     const outputPath = await downloadExpoGoAsync(platform, sdkVersion);
     Log.rawLog(`Expo Go downloaded to `);
