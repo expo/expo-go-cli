@@ -4,6 +4,10 @@
   "version": "0.0.4",
   "type": "module",
   "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/expo/expo-go-cli.git"
+  },
   "bin": {
     "expo-go": "./dist/index.js"
   },

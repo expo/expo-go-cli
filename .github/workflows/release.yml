@@ -2,21 +2,41 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions: {}
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: npm-publish
     permissions:
-      contents: read
-      id-token: write
+      contents: write
+      pull-requests: write
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -41,7 +61,121 @@ jobs:
       - name: Test end-to-end
         run: bun run test:e2e
 
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: version
+        env:
+          VERSION_BUMP: ${{ inputs.version }}
+        run: |
+          npm version "$VERSION_BUMP" --no-git-tag-version
+          version="$(node --print "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Push version branch
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          branch="release/v${VERSION}"
+          git switch --create "$branch"
+          git add package.json
+          git commit \
+            -m "Bump to version ${VERSION}" \
+            -m "Co-authored-by: Krystof Woldrich <31292499+krystofwoldrich@users.noreply.github.com>
+          Co-authored-by: OpenAI Codex <codex@openai.com>"
+          git push --set-upstream origin "$branch"
+
+      - name: Open version pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "release/v${VERSION}" \
+            --title "Bump to version ${VERSION}" \
+            --body "Automated version bump created by the Release workflow. Merging this pull request publishes expo-go@${VERSION}."
+
+  publish:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout merged release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+      - name: Test end-to-end
+        run: bun run test:e2e
+
+      - name: Verify release version
+        id: version
+        env:
+          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          version="$(node --print "require('./package.json').version")"
+          expected="${RELEASE_BRANCH#release/v}"
+          if [[ "$version" != "$expected" ]]; then
+            echo "::error::package.json version $version does not match release branch $RELEASE_BRANCH"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Publish to npm
         env:
           NPM_CONFIG_PROVENANCE: "true"
-        run: npm publish --access public
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "expo-go@${VERSION}" version >/dev/null 2>&1; then
+            echo "expo-go@${VERSION} is already published; skipping npm publish."
+          else
+            npm publish --access public
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; skipping GitHub release creation."
+          else
+            gh release create "$tag" \
+              --target "$MERGE_SHA" \
+              --title "$tag" \
+              --generate-notes
+          fi
