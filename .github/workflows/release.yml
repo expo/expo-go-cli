@@ -79,10 +79,7 @@ jobs:
           branch="release/v${VERSION}"
           git switch --create "$branch"
           git add package.json
-          git commit \
-            -m "Bump to version ${VERSION}" \
-            -m "Co-authored-by: Krystof Woldrich <31292499+krystofwoldrich@users.noreply.github.com>
-          Co-authored-by: OpenAI Codex <codex@openai.com>"
+          git commit -m "Bump to version ${VERSION}"
           git push --set-upstream origin "$branch"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
