@@ -12,11 +12,6 @@ on:
           - patch
           - minor
           - major
-  pull_request:
-    types:
-      - closed
-    branches:
-      - main
 
 permissions: {}
 
@@ -25,11 +20,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare-release:
-    if: github.event_name == 'workflow_dispatch'
+  release:
     runs-on: ubuntu-latest
+    environment: npm-publish
     permissions:
       contents: write
+      id-token: write
       pull-requests: write
     steps:
       - name: Checkout main
@@ -76,6 +72,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Push version branch
+        id: release-commit
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -87,6 +84,7 @@ jobs:
             -m "Co-authored-by: Krystof Woldrich <31292499+krystofwoldrich@users.noreply.github.com>
           Co-authored-by: OpenAI Codex <codex@openai.com>"
           git push --set-upstream origin "$branch"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Open version pull request
         env:
@@ -97,61 +95,7 @@ jobs:
             --base main \
             --head "release/v${VERSION}" \
             --title "Bump to version ${VERSION}" \
-            --body "Automated version bump created by the Release workflow. Merging this pull request publishes expo-go@${VERSION}."
-
-  publish:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.head.ref, 'release/v')
-    runs-on: ubuntu-latest
-    environment: npm-publish
-    permissions:
-      contents: write
-      id-token: write
-    steps:
-      - name: Checkout merged release
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
-          fetch-depth: 0
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24.x"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Test
-        run: bun run test
-
-      - name: Build
-        run: bun run build
-
-      - name: Test end-to-end
-        run: bun run test:e2e
-
-      - name: Verify release version
-        id: version
-        env:
-          RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          version="$(node --print "require('./package.json').version")"
-          expected="${RELEASE_BRANCH#release/v}"
-          if [[ "$version" != "$expected" ]]; then
-            echo "::error::package.json version $version does not match release branch $RELEASE_BRANCH"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+            --body "Automated version bump created by the Release workflow for the published expo-go@${VERSION} release."
 
       - name: Publish to npm
         env:
@@ -167,15 +111,15 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          RELEASE_SHA: ${{ steps.release-commit.outputs.sha }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          tag="v${VERSION}"
+          tag="expo-go@${VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already exists; skipping GitHub release creation."
           else
             gh release create "$tag" \
-              --target "$MERGE_SHA" \
+              --target "$RELEASE_SHA" \
               --title "$tag" \
               --generate-notes
           fi
