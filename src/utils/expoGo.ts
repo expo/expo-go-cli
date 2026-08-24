@@ -12,6 +12,7 @@ import { cwd } from 'node:process';
 import { extractAsync } from './tar';
 
 export type ExpoGoPlatform = 'ios' | 'android';
+export type ExpoGoSdkVersion = 'latest' | number;
 
 export type SDKVersion = {
   iosClientUrl?: string;
@@ -96,7 +97,7 @@ export function getLatestSdkVersion(sdkVersions: Record<string, SDKVersion>): st
 
 export async function getExpoGoDownloadUrlAsync(
   platform: ExpoGoPlatform,
-  sdkVersion: 'latest' | number,
+  sdkVersion: ExpoGoSdkVersion,
 ): Promise<string> {
   const { sdkVersions } = await getVersionsAsync();
   const normalizedSdkVersion = sdkVersion === 'latest'
@@ -143,7 +144,8 @@ async function cleanupOldExpoGoCacheEntriesAsync(cacheDirectory: string): Promis
 
 export async function downloadExpoGoAsync(
   platform: ExpoGoPlatform,
-  sdkVersion: 'latest' | number,
+  sdkVersion: ExpoGoSdkVersion,
+  { silent = false }: { silent?: boolean } = {},
 ): Promise<string> {
   const url = await getExpoGoDownloadUrlAsync(platform, sdkVersion);
 
@@ -154,13 +156,16 @@ export async function downloadExpoGoAsync(
 
   await cleanupOldExpoGoCacheEntriesAsync(path.dirname(cachedPath));
   if (await pathExistsAsync(cachedPath)) {
-    Log.log(`Using cached version from ${formatHomePath(path.dirname(cachedPath))}`);
+    if (!silent) {
+      Log.log(`Using cached version from ${formatHomePath(path.dirname(cachedPath))}`);
+    }
     return forceCopyAsync({ sourcePath: cachedPath, outputPath });
   }
 
   await downloadAppAsync({
     extract: shouldExtractResults,
     outputPath: cachedPath,
+    silent,
     url,
   });
 
@@ -171,10 +176,12 @@ async function downloadAppAsync({
   url,
   outputPath,
   extract,
+  silent,
 }: {
   url: string;
   outputPath: string;
   extract: boolean;
+  silent: boolean;
 }): Promise<void> {
   const fetchInstance = createFetch({
     cacheDirectory: 'expo-go',
@@ -192,7 +199,7 @@ async function downloadAppAsync({
       tmpPath,
       progressMessage,
       'Successfully downloaded Expo Go',
-      { fetch: fetchInstance }
+      { fetch: fetchInstance, silent }
     );
 
     await rm(outputPath, { force: true, recursive: true });
@@ -206,7 +213,7 @@ async function downloadAppAsync({
       outputPath,
       progressMessage,
       'Successfully downloaded Expo Go',
-      { fetch: fetchInstance }
+      { fetch: fetchInstance, silent }
     );
   }
 }

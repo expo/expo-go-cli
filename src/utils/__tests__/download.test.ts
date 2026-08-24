@@ -128,6 +128,36 @@ describe(downloadFileWithProgressTrackerAsync, () => {
       });
     }
   });
+
+  it('does not render progress in silent mode', async () => {
+    const originalIsTTY = process.stderr.isTTY;
+    Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: true });
+    const writeSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      globalThis.fetch = mock(async () => {
+        return new Response('downloaded', {
+          headers: { 'content-length': '10' },
+          status: 200,
+        });
+      }) as unknown as typeof fetch;
+
+      await downloadFileWithProgressTrackerAsync(
+        'https://example.com/Exponent.apk',
+        path.join(tempHome, 'Exponent-silent.apk'),
+        (ratio, total) => `Downloading Expo Go (${Math.round(ratio * total)} / ${total})`,
+        'Successfully downloaded Expo Go',
+        { fetch: createFetch({ cacheDirectory: 'silent-download-cache-test' }), silent: true }
+      );
+
+      expect(writeSpy).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process.stderr, 'isTTY', {
+        configurable: true,
+        value: originalIsTTY,
+      });
+    }
+  });
 });
 
 async function mkTempDirAsync(): Promise<string> {

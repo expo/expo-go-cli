@@ -14,13 +14,13 @@ export async function downloadFileWithProgressTrackerAsync(
   outputPath: string,
   progressTrackerMessage: string | ((ratio: number, total: number) => string),
   progressTrackerCompletedMessage: string,
-  { fetch: fetchInstance }: { fetch: FetchLike }
+  { fetch: fetchInstance, silent = false }: { fetch: FetchLike; silent?: boolean }
 ): Promise<void> {
   let didRenderProgress = false;
   let didReceiveFetchProgress = false;
   let lastProgressRenderTime = 0;
   const renderProgress = (message: string): void => {
-    if (!process.stderr.isTTY) {
+    if (silent || !process.stderr.isTTY) {
       return;
     }
     didRenderProgress = true;
