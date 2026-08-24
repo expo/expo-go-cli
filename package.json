@@ -1,13 +1,29 @@
 {
   "name": "expo-go",
-  "module": "dist/index.js",
   "version": "0.0.4",
+  "description": "Download Expo Go binaries or resolve their download URLs from the command line.",
+  "keywords": [
+    "expo",
+    "expo-go",
+    "cli",
+    "download",
+    "ios",
+    "android",
+    "simulator"
+  ],
+  "homepage": "https://github.com/expo/expo-go-cli#readme",
+  "bugs": {
+    "url": "https://github.com/expo/expo-go-cli/issues"
+  },
+  "license": "MIT",
+  "author": "Expo",
   "type": "module",
   "private": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/expo/expo-go-cli.git"
   },
+  "module": "dist/index.js",
   "bin": {
     "expo-go": "./dist/index.js"
   },
