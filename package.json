@@ -1,6 +1,6 @@
 {
   "name": "expo-go",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "description": "Download Expo Go binaries or resolve their download URLs from the command line.",
   "keywords": [
     "expo",
