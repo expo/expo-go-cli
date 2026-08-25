@@ -2,27 +2,25 @@ import { randomUUID } from 'node:crypto';
 import { cp, lstat, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import path, { basename, join } from 'node:path';
 
-import { apiGetAsync } from '../api';
 import Log from '../log';
+import {
+  type ExpoGoPlatform,
+  type ExpoGoSdkVersion,
+  type ExpoVersions,
+  type SDKVersion,
+  getLatestSdkVersion,
+  resolveExpoGoDownloadURLAsync,
+} from '../expoGoDownloadURL';
 import { createFetch } from './fetch';
+import { env } from './env';
 import * as downloadUtils from './download';
 import { formatBytes } from './files';
 import { formatHomePath, getExpoHomeDirectory, getTmpDirectory } from './paths';
 import { cwd } from 'node:process';
 import { extractAsync } from './tar';
 
-export type ExpoGoPlatform = 'ios' | 'android';
-export type ExpoGoSdkVersion = 'latest' | number;
-
-export type SDKVersion = {
-  iosClientUrl?: string;
-  androidClientUrl?: string;
-  [key: string]: unknown;
-};
-
-export type ExpoVersions = {
-  sdkVersions: Record<string, SDKVersion>;
-};
+export type { ExpoGoPlatform, ExpoGoSdkVersion, ExpoVersions, SDKVersion };
+export { getLatestSdkVersion };
 
 const SIX_MONTHS_IN_MS = 6 * 30 * 24 * 60 * 60 * 1000;
 const VERSIONS_CACHE_TTL_MS = 1000 * 60 * 5;
@@ -32,14 +30,12 @@ const ONE_WEEK_IN_MS = 1000 * 60 * 60 * 24 * 7;
 // standalone CLI addition of an output extension for copy/download commands.
 const platformSettings = {
   ios: {
-    versionsKey: 'iosClientUrl',
     extension: 'app',
     shouldExtractResults: true,
     getFilePath: (filename: string) =>
       path.join(getExpoHomeDirectory(), 'ios-simulator-app-cache', `${filename}.app`),
   },
   android: {
-    versionsKey: 'androidClientUrl',
     extension: 'apk',
     shouldExtractResults: false,
     getFilePath: (filename: string) =>
@@ -64,59 +60,29 @@ async function pathExistsAsync(filePath: string): Promise<boolean> {
   }
 }
 
-async function getVersionsAsync(): Promise<ExpoVersions> {
-  const response = await apiGetAsync('versions/latest', {
-    fetch: createFetch({
-      cacheDirectory: 'versions-cache',
-      ttl: VERSIONS_CACHE_TTL_MS,
-    }),
-  });
-  const data = response && typeof response === 'object' && 'data' in response ? response.data : response;
-  if (
-    !data ||
-    typeof data !== 'object' ||
-    !('sdkVersions' in data) ||
-    typeof data.sdkVersions !== 'object' ||
-    !data.sdkVersions
-  ) {
-    throw new Error('Unexpected response when fetching version info from Expo servers.');
+function getExpoApiBaseUrl(): string {
+  if (env.EXPO_STAGING) {
+    return 'https://staging-api.expo.dev';
+  } else if (env.EXPO_LOCAL) {
+    return 'http://127.0.0.1:3000';
   }
-  return data as ExpoVersions;
-}
-
-export function getLatestSdkVersion(sdkVersions: Record<string, SDKVersion>): string {
-  const intVersions = Object.keys(sdkVersions).map((v) => parseInt(v, 10)).filter(isFinite);
-  const latestVersion = Math.max(...intVersions);
-
-  if (!isFinite(latestVersion)) {
-    throw new Error('Unable to find a version of Expo Go.');
-  }
-
-  return `${latestVersion}.0.0`;
+  return 'https://api.expo.dev';
 }
 
 export async function getExpoGoDownloadUrlAsync(
   platform: ExpoGoPlatform,
   sdkVersion: ExpoGoSdkVersion,
 ): Promise<string> {
-  const { sdkVersions } = await getVersionsAsync();
-  const normalizedSdkVersion = sdkVersion === 'latest'
-    ? getLatestSdkVersion(sdkVersions)
-    : `${sdkVersion}.0.0`;
-
-  const versionMetadata = sdkVersions[normalizedSdkVersion];
-  if (!versionMetadata) {
-    throw new Error(`Unable to find a version of Expo Go for SDK ${normalizedSdkVersion}`);
-  }
-
-  const url = versionMetadata[platformSettings[platform].versionsKey];
-  if (typeof url !== 'string' || !url) {
-    throw new Error(
-      `Unable to find an Expo Go ${platform} download URL for SDK ${normalizedSdkVersion}`
-    );
-  }
-
-  return url;
+  return await resolveExpoGoDownloadURLAsync(
+    { platform, sdkVersion },
+    {
+      apiBaseUrl: getExpoApiBaseUrl(),
+      fetch: createFetch({
+        cacheDirectory: 'versions-cache',
+        ttl: VERSIONS_CACHE_TTL_MS,
+      }),
+    }
+  );
 }
 
 async function cleanupOldExpoGoCacheEntriesAsync(cacheDirectory: string): Promise<void> {

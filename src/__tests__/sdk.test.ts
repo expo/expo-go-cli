@@ -1,31 +1,54 @@
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { getExpoGoDownloadURL } from '../../index';
-import * as expoGo from '../utils/expoGo';
+
+const versions = {
+  sdkVersions: {
+    '54.0.0': {
+      iosClientUrl: 'https://example.com/Exponent-54.tar.gz',
+    },
+    '55.0.0': {
+      androidClientUrl: 'https://example.com/Exponent-55.apk',
+      iosClientUrl: 'https://example.com/Exponent-55.tar.gz',
+    },
+  },
+};
+
+let originalFetch: typeof globalThis.fetch;
+
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+  globalThis.fetch = mock(async () => {
+    return new Response(JSON.stringify({ data: versions }), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    });
+  }) as unknown as typeof globalThis.fetch;
+});
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   mock.restore();
 });
 
 describe(getExpoGoDownloadURL, () => {
   it('resolves a URL from object parameters', async () => {
-    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockResolvedValue(
-      'https://example.com/Exponent-55.apk'
-    );
-
     await expect(
       getExpoGoDownloadURL({ platform: 'android', sdkVersion: 55 })
     ).resolves.toBe('https://example.com/Exponent-55.apk');
-    expect(getUrlSpy).toHaveBeenCalledWith('android', 55);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'https://api.expo.dev/v2/versions/latest',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   });
 
   it('defaults to the latest SDK version', async () => {
-    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockResolvedValue(
-      'https://example.com/Exponent-latest.tar.gz'
+    await expect(getExpoGoDownloadURL({ platform: 'ios' })).resolves.toBe(
+      'https://example.com/Exponent-55.tar.gz'
     );
-
-    await getExpoGoDownloadURL({ platform: 'ios' });
-
-    expect(getUrlSpy).toHaveBeenCalledWith('ios', 'latest');
   });
 });

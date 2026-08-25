@@ -1,8 +1,8 @@
 import {
   type ExpoGoPlatform,
   type ExpoGoSdkVersion,
-  getExpoGoDownloadUrlAsync,
-} from './utils/expoGo.js';
+  resolveExpoGoDownloadURLAsync,
+} from './expoGoDownloadURL.js';
 
 export type { ExpoGoPlatform, ExpoGoSdkVersion };
 
@@ -18,5 +18,8 @@ export async function getExpoGoDownloadURL({
   platform,
   sdkVersion = 'latest',
 }: GetExpoGoDownloadURLOptions): Promise<string> {
-  return await getExpoGoDownloadUrlAsync(platform, sdkVersion);
+  return await resolveExpoGoDownloadURLAsync(
+    { platform, sdkVersion },
+    { fetch: globalThis.fetch }
+  );
 }
