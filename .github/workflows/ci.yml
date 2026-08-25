@@ -18,7 +18,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: expo-go-dist
-          path: dist/index.js
+          path: dist
 
   test:
     name: Test

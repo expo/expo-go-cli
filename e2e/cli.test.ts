@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const CLI_PATH = fileURLToPath(new URL('../dist/index.js', import.meta.url));
+const CLI_PATH = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const DOWNLOAD_TIMEOUT_MS = 45 * 60 * 1000;
 const PLATFORMS = ['android', 'ios'] as const;
 const SDK_VERSIONS = [44, 56] as const;
@@ -47,7 +47,28 @@ describe('built CLI', () => {
     });
   });
 
+  it('prints machine-readable errors in JSON mode', async () => {
+    const result = await expectCli(['url', 'ios', 'LATEST', '--json'], {
+      exitCode: 1,
+    });
+
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toEqual({
+      error: 'Expected "LATEST" to be an Expo SDK version or "latest".',
+    });
+  });
+
   describe('url', () => {
+    it('prints stable JSON without human-readable output', async () => {
+      const result = await expectCli(['url', 'android', '56', '--json']);
+      const output = JSON.parse(result.stdout);
+
+      expect(result.stderr).toBe('');
+      expect(Object.keys(output)).toEqual(['url']);
+      expect(output.url).toStartWith('https://');
+      expect(output.url).toContain('.apk');
+    });
+
     for (const platform of PLATFORMS) {
       for (const sdkVersion of SDK_VERSIONS) {
         for (const argOrder of ARG_ORDERS) {

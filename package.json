@@ -24,19 +24,24 @@
     "url": "https://github.com/expo/expo-go-cli.git"
   },
   "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "expo-go": "./dist/index.js"
+    "expo-go": "./dist/cli.js"
   },
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
     "dist",
     "README.md"
   ],
   "scripts": {
-    "build": "bun build ./index.ts --target=node --outfile=dist/index.js",
-    "dev": "bun ./index.ts",
+    "build": "bun build ./index.ts ./cli.ts --target=node --outdir=dist --splitting && tsc --project tsconfig.build.json",
+    "dev": "bun ./cli.ts",
     "test": "bun test src",
     "test:e2e": "bun test e2e",
     "typecheck": "tsc --noEmit"

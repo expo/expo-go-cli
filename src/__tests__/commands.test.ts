@@ -54,6 +54,32 @@ describe('url', () => {
     expect(getUrlSpy).toHaveBeenCalledWith('android', 55);
   });
 
+  it('prints stable JSON without human-readable output', async () => {
+    spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockImplementation(async () => {
+      calls.push('get-url');
+      return 'https://example.com/Exponent-55.apk';
+    });
+
+    await runCliAsync(['url', 'android', '55', '--json']);
+
+    expect(calls).toEqual([
+      'get-url',
+      'out:{"url":"https://example.com/Exponent-55.apk"}',
+    ]);
+  });
+
+  it('accepts --json before the command', async () => {
+    spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockResolvedValue(
+      'https://example.com/Exponent-55.apk'
+    );
+
+    await runCliAsync(['--json', 'url', 'android', '55']);
+
+    expect(Log.out).toHaveBeenCalledWith(
+      '{"url":"https://example.com/Exponent-55.apk"}'
+    );
+  });
+
   it('rejects an SDK version that is not parsable by parseInt or exact "latest"', async () => {
     expect(runCliAsync(['url', 'ios', 'LATEST'])).rejects.toThrow(
       'Expected "LATEST" to be an Expo SDK version or "latest".'
@@ -95,9 +121,27 @@ describe('download', () => {
     expect(downloadSpy).toHaveBeenCalledWith('ios', 'latest');
   });
 
+  it('prints a stable absolute path as JSON and silences download progress', async () => {
+    const downloadSpy = mockDownloadExpoGoAsync();
+
+    await runCliAsync(['download', 'android', '55', '--json']);
+
+    expect(calls).toEqual([
+      'download',
+      'out:{"path":"/output/Exponent-55.apk"}',
+    ]);
+    expect(downloadSpy).toHaveBeenCalledWith('android', 55, { silent: true });
+  });
+
   it('rejects a second argument that is not an SDK version', async () => {
     expect(runCliAsync(['download', 'ios', '/output'])).rejects.toThrow(
       'Expected "/output" to be an Expo SDK version or "latest"'
+    );
+  });
+
+  it('rejects duplicate --json options', async () => {
+    expect(runCliAsync(['url', 'android', '--json', '--json'])).rejects.toThrow(
+      'Option "--json" can only be specified once.'
     );
   });
 });

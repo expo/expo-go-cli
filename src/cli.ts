@@ -6,27 +6,36 @@ import {
 import { formatHomePath } from './utils/paths';
 
 const COMMAND_HELP = {
-  help: `Usage: expo-go [command]
+  help: `Usage: expo-go [command] [options]
 
 Get Expo Go download URLs and binaries
 
 Commands:
   url <platform> [sdkVersion]       print the Expo Go download URL for a platform
-  download <platform> [sdkVersion]  download Expo Go into the current directory`,
-  url: `Usage: expo-go url <platform> [sdkVersion]
+  download <platform> [sdkVersion]  download Expo Go into the current directory
+
+Options:
+  --json  print stable, machine-readable JSON only`,
+  url: `Usage: expo-go url <platform> [sdkVersion] [--json]
 
 Print the Expo Go download URL for a platform.
 
 Arguments:
   platform    ios or android
-  sdkVersion  Expo SDK version, or "latest". Defaults to latest.`,
-  download: `Usage: expo-go download <platform> [sdkVersion]
+  sdkVersion  Expo SDK version, or "latest". Defaults to latest.
+
+Options:
+  --json  print a JSON object with a stable "url" field`,
+  download: `Usage: expo-go download <platform> [sdkVersion] [--json]
 
 Download Expo Go into the current directory.
 
 Arguments:
   platform    ios or android
-  sdkVersion  Expo SDK version, or "latest". Defaults to latest.`,
+  sdkVersion  Expo SDK version, or "latest". Defaults to latest.
+
+Options:
+  --json  print a JSON object with a stable "path" field`,
 } as const;
 
 const RESOLVING_EXPO_GO_VERSION_MESSAGE = 'Resolving the correct Expo Go version...';
@@ -39,6 +48,27 @@ function assertNoExtraArgs(command: string, args: string[], max: number): void {
   if (args.length > max) {
     throw new Error(`Too many arguments for "${command}".`);
   }
+}
+
+function parseOptions(args: string[]): {
+  json: boolean;
+  positionalArgs: string[];
+} {
+  let json = false;
+  const positionalArgs: string[] = [];
+
+  for (const arg of args) {
+    if (arg === '--json') {
+      if (json) {
+        throw new Error('Option "--json" can only be specified once.');
+      }
+      json = true;
+    } else {
+      positionalArgs.push(arg);
+    }
+  }
+
+  return { json, positionalArgs };
 }
 
 function assertPlatformInput(value: string | undefined): 'ios' | 'android' {
@@ -101,7 +131,8 @@ function parsePlatformAndSdkVersionArgs(args: string[]): {
 }
 
 export async function runCliAsync(args: string[]): Promise<void> {
-  const [command, ...commandArgs] = args;
+  const { json, positionalArgs } = parseOptions(args);
+  const [command, ...commandArgs] = positionalArgs;
   if (!command || isHelpToken(command)) {
     Log.out(COMMAND_HELP.help);
     return;
@@ -115,10 +146,16 @@ export async function runCliAsync(args: string[]): Promise<void> {
     assertNoExtraArgs(command, commandArgs, 2);
     const { platform, sdkVersion } = parsePlatformAndSdkVersionArgs(commandArgs);
 
-    Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
+    if (!json) {
+      Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
+    }
     const url = await getExpoGoDownloadUrlAsync(platform, sdkVersion);
-    Log.rawLog(`Download Expo Go from `);
-    Log.out(url);
+    if (json) {
+      Log.out(JSON.stringify({ url }));
+    } else {
+      Log.rawLog(`Download Expo Go from `);
+      Log.out(url);
+    }
     return;
   }
 
@@ -129,10 +166,18 @@ export async function runCliAsync(args: string[]): Promise<void> {
     }
     assertNoExtraArgs(command, commandArgs, 2);
     const { platform, sdkVersion } = parsePlatformAndSdkVersionArgs(commandArgs);
-    Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
-    const outputPath = await downloadExpoGoAsync(platform, sdkVersion);
-    Log.rawLog(`Expo Go downloaded to `);
-    Log.out(formatHomePath(outputPath));
+    if (!json) {
+      Log.log(RESOLVING_EXPO_GO_VERSION_MESSAGE);
+    }
+    const outputPath = json
+      ? await downloadExpoGoAsync(platform, sdkVersion, { silent: true })
+      : await downloadExpoGoAsync(platform, sdkVersion);
+    if (json) {
+      Log.out(JSON.stringify({ path: outputPath }));
+    } else {
+      Log.rawLog(`Expo Go downloaded to `);
+      Log.out(formatHomePath(outputPath));
+    }
     return;
   }
 
