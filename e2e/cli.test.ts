@@ -38,6 +38,9 @@ describe('built CLI', () => {
     await expectCli(['download', '--help'], {
       stdout: 'Usage: expo-go download <platform> [sdkVersion]',
     });
+    await expectCli(['versions', '--help'], {
+      stdout: 'Usage: expo-go versions <platform>',
+    });
   });
 
   it('rejects invalid SDK versions', async () => {
@@ -107,6 +110,43 @@ describe('built CLI', () => {
           );
         }
       }
+    }
+  });
+
+  describe('versions', () => {
+    it('prints a nonzero JSON error for an invalid limit', async () => {
+      const result = await expectCli(['versions', 'ios', '--stable', '--limit', '0', '--json'], {
+        exitCode: 1,
+      });
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout)).toEqual({
+        error: 'Expected "--limit" to be a positive safe integer.',
+      });
+    });
+
+    for (const platform of PLATFORMS) {
+      it(`lists three latest stable ${platform} builds without downloading binaries`, async () => {
+        const result = await expectCli([
+          'versions',
+          platform,
+          '--stable',
+          '--limit',
+          '3',
+          '--json',
+        ]);
+        expect(result.stderr).toBe('');
+        const output = JSON.parse(result.stdout);
+        expect(Object.keys(output)).toEqual(['versions']);
+        expect(output.versions).toHaveLength(3);
+        const sdks = output.versions.map((entry: { sdkVersion: number }) => entry.sdkVersion);
+        expect(sdks).toEqual([...sdks].sort((a, b) => b - a));
+        for (const entry of output.versions) {
+          expect(Object.keys(entry)).toEqual(['sdkVersion', 'version', 'url']);
+          expect(entry.version).toMatch(/^\d+\.\d+\.\d+$/);
+          expect(entry.url).toStartWith('https://');
+          expect(entry.url).toEndWith(platform === 'ios' ? '.tar.gz' : '.apk');
+        }
+      }, 120_000);
     }
   });
 });

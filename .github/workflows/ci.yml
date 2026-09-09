@@ -58,3 +58,6 @@ jobs:
           name: expo-go-dist
           path: dist
       - run: bun run test:e2e
+        env:
+          # Public release metadata checks can otherwise hit GitHub's unauthenticated rate limit.
+          GH_TOKEN: ${{ github.token }}
