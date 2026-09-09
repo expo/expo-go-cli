@@ -4,7 +4,7 @@ import path, { basename, join } from 'node:path';
 
 import { apiGetAsync } from '../api';
 import Log from '../log';
-import { createFetch } from './fetch';
+import { createFetch, type FetchLike } from './fetch';
 import * as downloadUtils from './download';
 import { formatBytes } from './files';
 import { formatHomePath, getExpoHomeDirectory, getTmpDirectory } from './paths';
@@ -64,20 +64,24 @@ async function pathExistsAsync(filePath: string): Promise<boolean> {
   }
 }
 
-async function getVersionsAsync(): Promise<ExpoVersions> {
+export async function getVersionsAsync(fetchAsync?: FetchLike): Promise<ExpoVersions> {
   const response = await apiGetAsync('versions/latest', {
-    fetch: createFetch({
-      cacheDirectory: 'versions-cache',
-      ttl: VERSIONS_CACHE_TTL_MS,
-    }),
+    fetch:
+      fetchAsync ??
+      createFetch({
+        cacheDirectory: 'versions-cache',
+        ttl: VERSIONS_CACHE_TTL_MS,
+      }),
   });
-  const data = response && typeof response === 'object' && 'data' in response ? response.data : response;
+  const data =
+    response && typeof response === 'object' && 'data' in response ? response.data : response;
   if (
     !data ||
     typeof data !== 'object' ||
     !('sdkVersions' in data) ||
     typeof data.sdkVersions !== 'object' ||
-    !data.sdkVersions
+    !data.sdkVersions ||
+    Array.isArray(data.sdkVersions)
   ) {
     throw new Error('Unexpected response when fetching version info from Expo servers.');
   }
@@ -85,7 +89,9 @@ async function getVersionsAsync(): Promise<ExpoVersions> {
 }
 
 export function getLatestSdkVersion(sdkVersions: Record<string, SDKVersion>): string {
-  const intVersions = Object.keys(sdkVersions).map((v) => parseInt(v, 10)).filter(isFinite);
+  const intVersions = Object.keys(sdkVersions)
+    .map(v => parseInt(v, 10))
+    .filter(isFinite);
   const latestVersion = Math.max(...intVersions);
 
   if (!isFinite(latestVersion)) {
@@ -97,12 +103,11 @@ export function getLatestSdkVersion(sdkVersions: Record<string, SDKVersion>): st
 
 export async function getExpoGoDownloadUrlAsync(
   platform: ExpoGoPlatform,
-  sdkVersion: ExpoGoSdkVersion,
+  sdkVersion: ExpoGoSdkVersion
 ): Promise<string> {
   const { sdkVersions } = await getVersionsAsync();
-  const normalizedSdkVersion = sdkVersion === 'latest'
-    ? getLatestSdkVersion(sdkVersions)
-    : `${sdkVersion}.0.0`;
+  const normalizedSdkVersion =
+    sdkVersion === 'latest' ? getLatestSdkVersion(sdkVersions) : `${sdkVersion}.0.0`;
 
   const versionMetadata = sdkVersions[normalizedSdkVersion];
   if (!versionMetadata) {
@@ -145,7 +150,7 @@ async function cleanupOldExpoGoCacheEntriesAsync(cacheDirectory: string): Promis
 export async function downloadExpoGoAsync(
   platform: ExpoGoPlatform,
   sdkVersion: ExpoGoSdkVersion,
-  { silent = false }: { silent?: boolean } = {},
+  { silent = false }: { silent?: boolean } = {}
 ): Promise<string> {
   const url = await getExpoGoDownloadUrlAsync(platform, sdkVersion);
 

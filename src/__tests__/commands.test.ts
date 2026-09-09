@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import { runCliAsync } from '../cli';
 import Log from '../log';
 import * as expoGo from '../utils/expoGo';
+import * as expoGoVersions from '../utils/expoGoVersions';
 
 const calls: string[] = [];
 
@@ -25,12 +26,10 @@ afterEach(() => {
 
 describe('url', () => {
   it('prints the resolved Expo Go URL for the platform and SDK version', async () => {
-    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockImplementation(
-      async () => {
-        calls.push('get-url');
-        return 'https://example.com/Exponent-55.apk';
-      }
-    );
+    const getUrlSpy = spyOn(expoGo, 'getExpoGoDownloadUrlAsync').mockImplementation(async () => {
+      calls.push('get-url');
+      return 'https://example.com/Exponent-55.apk';
+    });
 
     await runCliAsync(['url', 'android', '55']);
 
@@ -62,10 +61,7 @@ describe('url', () => {
 
     await runCliAsync(['url', 'android', '55', '--json']);
 
-    expect(calls).toEqual([
-      'get-url',
-      'out:{"url":"https://example.com/Exponent-55.apk"}',
-    ]);
+    expect(calls).toEqual(['get-url', 'out:{"url":"https://example.com/Exponent-55.apk"}']);
   });
 
   it('accepts --json before the command', async () => {
@@ -75,9 +71,7 @@ describe('url', () => {
 
     await runCliAsync(['--json', 'url', 'android', '55']);
 
-    expect(Log.out).toHaveBeenCalledWith(
-      '{"url":"https://example.com/Exponent-55.apk"}'
-    );
+    expect(Log.out).toHaveBeenCalledWith('{"url":"https://example.com/Exponent-55.apk"}');
   });
 
   it('rejects an SDK version that is not parsable by parseInt or exact "latest"', async () => {
@@ -126,10 +120,7 @@ describe('download', () => {
 
     await runCliAsync(['download', 'android', '55', '--json']);
 
-    expect(calls).toEqual([
-      'download',
-      'out:{"path":"/output/Exponent-55.apk"}',
-    ]);
+    expect(calls).toEqual(['download', 'out:{"path":"/output/Exponent-55.apk"}']);
     expect(downloadSpy).toHaveBeenCalledWith('android', 55, { silent: true });
   });
 
@@ -152,3 +143,77 @@ function mockDownloadExpoGoAsync(): ReturnType<typeof mock<typeof expoGo.downloa
     return '/output/Exponent-55.apk';
   });
 }
+
+describe('versions', () => {
+  const versions = [
+    { sdkVersion: 57, version: '57.0.9', url: 'https://example.com/Expo-Go-57.0.9.tar.gz' },
+    { sdkVersion: 56, version: '56.0.4', url: 'https://example.com/Expo-Go-56.0.4.tar.gz' },
+  ];
+
+  it('prints only the stable JSON contract and forwards selection options', async () => {
+    const list = spyOn(expoGoVersions, 'getExpoGoVersionsAsync').mockResolvedValue(versions);
+    await runCliAsync(['versions', 'ios', '--stable', '--limit', '3', '--json']);
+    expect(list).toHaveBeenCalledWith({ platform: 'ios', stable: true, limit: 3 });
+    expect(calls).toEqual([`out:${JSON.stringify({ versions })}`]);
+  });
+
+  it('supports JSON before the command and flags before the platform', async () => {
+    const list = spyOn(expoGoVersions, 'getExpoGoVersionsAsync').mockResolvedValue(versions);
+    await runCliAsync(['--json', 'versions', '--limit=3', '--stable', 'android']);
+    expect(list).toHaveBeenCalledWith({ platform: 'android', stable: true, limit: 3 });
+  });
+
+  it('prints readable SDK, app version, and URL rows', async () => {
+    const list = spyOn(expoGoVersions, 'getExpoGoVersionsAsync').mockResolvedValue(versions);
+    await runCliAsync(['versions', 'ios']);
+    expect(list).toHaveBeenCalledWith({ platform: 'ios', stable: false, limit: undefined });
+    expect(calls).toEqual(
+      versions.map(entry => `out:SDK ${entry.sdkVersion}\tExpo Go ${entry.version}\t${entry.url}`)
+    );
+  });
+
+  it('prints command-specific help without network access', async () => {
+    const list = spyOn(expoGoVersions, 'getExpoGoVersionsAsync');
+    await runCliAsync(['versions', '--help']);
+    expect(Log.out).toHaveBeenCalledWith(expect.stringContaining('--stable'));
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it.each(['0', '-1', '1.5', '1e2', '3junk', 'NaN', 'Infinity', '9007199254740992', ''])(
+    'rejects invalid limits: %s',
+    async limit => {
+      await expect(runCliAsync(['versions', 'ios', '--limit', limit])).rejects.toThrow(
+        'positive safe integer'
+      );
+      expect(calls).toEqual([]);
+    }
+  );
+
+  it.each(
+    [
+      ['versions', 'ios', '--limit'],
+      ['versions', 'ios', '--limit', '--stable'],
+      ['versions', 'ios', '--limit', '3', '--limit=2'],
+      ['versions', 'ios', '--stable', '--stable'],
+      ['versions', 'ios', '--stable=false'],
+      ['versions', 'ios', '--unknown'],
+      ['versions', 'ios', '57'],
+      ['versions', 'web'],
+      ['versions', '--stable'],
+      ['versions', 'ios', '--json', '--json'],
+    ].map(args => ({ args }))
+  )('rejects invalid arguments: %j', async ({ args }) => {
+    await expect(runCliAsync(args)).rejects.toThrow();
+    expect(calls).toEqual([]);
+  });
+
+  it('does not print partial results on failed discovery', async () => {
+    spyOn(expoGoVersions, 'getExpoGoVersionsAsync').mockRejectedValue(
+      new Error('metadata unavailable')
+    );
+    await expect(runCliAsync(['versions', 'ios', '--stable', '--json'])).rejects.toThrow(
+      'metadata unavailable'
+    );
+    expect(calls).toEqual([]);
+  });
+});

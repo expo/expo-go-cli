@@ -1,9 +1,7 @@
 import Log from './log';
-import {
-  downloadExpoGoAsync,
-  getExpoGoDownloadUrlAsync,
-} from './utils/expoGo';
+import { downloadExpoGoAsync, getExpoGoDownloadUrlAsync } from './utils/expoGo';
 import { formatHomePath } from './utils/paths';
+import { getExpoGoVersionsAsync } from './utils/expoGoVersions';
 
 const COMMAND_HELP = {
   help: `Usage: expo-go [command] [options]
@@ -13,6 +11,7 @@ Get Expo Go download URLs and binaries
 Commands:
   url <platform> [sdkVersion]       print the Expo Go download URL for a platform
   download <platform> [sdkVersion]  download Expo Go into the current directory
+  versions <platform>              list available Expo Go versions, newest SDK first
 
 Options:
   --json  print stable, machine-readable JSON only`,
@@ -36,6 +35,14 @@ Arguments:
 
 Options:
   --json  print a JSON object with a stable "path" field`,
+  versions: `Usage: expo-go versions <platform> [--stable] [--limit <count>] [--json]
+
+List Expo Go versions for ios or android, newest SDK first.
+
+Options:
+  --stable         exclude prereleases and verify GitHub-hosted releases
+  --limit <count>  return at most this many SDKs (a positive integer)
+  --json           print a JSON object with a stable "versions" array`,
 } as const;
 
 const RESOLVING_EXPO_GO_VERSION_MESSAGE = 'Resolving the correct Expo Go version...';
@@ -85,18 +92,14 @@ function getPlatformInput(value: string | undefined): 'ios' | 'android' | undefi
   return undefined;
 }
 
-function assertSdkVersionInput(
-  sdkVersion: string | undefined
-): 'latest' | number {
+function assertSdkVersionInput(sdkVersion: string | undefined): 'latest' | number {
   if (!sdkVersion || sdkVersion === 'latest') {
     return 'latest';
   }
 
   const sdkNumber = parseInt(sdkVersion, 10);
   if (Number.isNaN(sdkNumber)) {
-    throw new Error(
-      `Expected "${sdkVersion}" to be an Expo SDK version or "latest".`
-    );
+    throw new Error(`Expected "${sdkVersion}" to be an Expo SDK version or "latest".`);
   }
 
   return sdkNumber;
@@ -130,11 +133,61 @@ function parsePlatformAndSdkVersionArgs(args: string[]): {
   };
 }
 
+function parseVersionsArgs(args: string[]): {
+  platform: 'ios' | 'android';
+  stable: boolean;
+  limit?: number;
+} {
+  const positionalArgs: string[] = [];
+  let stable = false;
+  let limit: number | undefined;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === '--stable') {
+      if (stable) {
+        throw new Error('Option "--stable" can only be specified once.');
+      }
+      stable = true;
+    } else if (arg === '--limit' || arg.startsWith('--limit=')) {
+      if (limit !== undefined) {
+        throw new Error('Option "--limit" can only be specified once.');
+      }
+      const value = arg === '--limit' ? args[++index] : arg.slice('--limit='.length);
+      if (!value || !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+        throw new Error('Expected "--limit" to be a positive safe integer.');
+      }
+      limit = Number(value);
+    } else if (arg.startsWith('-')) {
+      throw new Error(`Unknown option "${arg}" for "versions".`);
+    } else {
+      positionalArgs.push(arg);
+    }
+  }
+  assertNoExtraArgs('versions', positionalArgs, 1);
+  return { platform: assertPlatformInput(positionalArgs[0]), stable, limit };
+}
+
 export async function runCliAsync(args: string[]): Promise<void> {
   const { json, positionalArgs } = parseOptions(args);
   const [command, ...commandArgs] = positionalArgs;
   if (!command || isHelpToken(command)) {
     Log.out(COMMAND_HELP.help);
+    return;
+  }
+
+  if (command === 'versions') {
+    if (commandArgs.some(isHelpToken)) {
+      Log.out(COMMAND_HELP.versions);
+      return;
+    }
+    const versions = await getExpoGoVersionsAsync(parseVersionsArgs(commandArgs));
+    if (json) {
+      Log.out(JSON.stringify({ versions }));
+    } else {
+      for (const { sdkVersion, version, url } of versions) {
+        Log.out(`SDK ${sdkVersion}\tExpo Go ${version}\t${url}`);
+      }
+    }
     return;
   }
 

@@ -1,12 +1,13 @@
 # expo-go
 
-Download Expo Go binaries, or print the resolved download URL, from a tiny standalone CLI (smaller than 45 KB, with no runtime dependencies).
+Download Expo Go binaries, resolve download URLs, or list available versions from a small standalone CLI with no runtime dependencies.
 
 ## Usage
 
 ```bash
 npx expo-go url <ios|android> [sdkVersion|latest] [--json]
 npx expo-go download <ios|android> [sdkVersion|latest] [--json]
+npx expo-go versions <ios|android> [--stable] [--limit <count>] [--json]
 ```
 
 Examples:
@@ -17,6 +18,7 @@ npx expo-go url ios latest
 npx expo-go url android 55 --json
 npx expo-go download android 55
 npx expo-go download ios latest
+npx expo-go versions ios --stable --limit 3 --json
 ```
 
 When no SDK version is provided, the CLI uses the latest Expo Go version. Downloads are saved in the current directory with their resolved Expo Go filename.
@@ -62,6 +64,50 @@ npx expo-go download android latest --json
 # {"path":"/absolute/path/to/Exponent.apk"}
 ```
 
+### `expo-go versions`
+
+List platform-specific Expo Go builds in descending SDK-major order. Each entry contains
+`sdkVersion` (a number accepted by `url` and `download`), `version` (the Expo Go app
+version, not the CLI's npm version), and `url`. This command fetches metadata only;
+it does not download app binaries.
+
+```bash
+npx expo-go versions ios --stable --limit 3 --json
+# {"versions":[{"sdkVersion":57,"version":"57.0.9","url":"https://...tar.gz"},...]}
+
+npx expo-go versions android --stable --limit 3
+```
+
+- Without `--stable`, prerelease client builds can appear. Only SDK-major metadata
+  entries addressable by the existing `url`/`download` commands are listed. SDKs
+  missing a client version or download URL for the selected platform are omitted.
+- `--stable` requires numeric stable app versions and rejects prerelease SDK package
+  versions and metadata flags. GitHub-hosted builds additionally require a matching,
+  non-draft/non-prerelease release and a fully uploaded platform asset. Historical
+  CDN-hosted builds rely on Expo's version metadata because they have no GitHub
+  release record. This does not verify binary checksums or runtime compatibility.
+- `--limit` is a maximum, applied after filtering. For image builds requiring
+  **exactly three** builds, validate the returned count as well:
+
+  ```bash
+  set -o pipefail
+  npx expo-go versions ios --stable --limit 3 --json |
+    jq -e '.versions | select(length == 3)'
+  ```
+
+- Discovery errors, malformed metadata, unverifiable GitHub releases, and an empty
+  result fail with a nonzero exit code. JSON failures produce only `{"error":"..."}`;
+  no partial version list is returned. Transient network/429/5xx errors get up to
+  three attempts, with 30-second request timeouts and bounded backoff.
+- Metadata uses the existing five-minute Expo cache. Set `EXPO_NO_CACHE=1` to force
+  fresh discovery. Optional `GH_TOKEN` or `GITHUB_TOKEN` authentication avoids the
+  low unauthenticated GitHub API rate limit; tokens are sent only to the GitHub API,
+  and metadata requests do not follow redirects.
+
+`url ... latest` and `download ... latest` retain their existing behavior; they do
+not implicitly apply the new stable filter. Select an SDK from `versions --stable`
+and pass its `sdkVersion` to those commands when stable selection is required.
+
 ## TypeScript SDK
 
 The package exports a typed `getExpoGoDownloadURL` function. It accepts an Expo SDK major version or `latest`, which is also the default.
@@ -75,6 +121,15 @@ const url = await getExpoGoDownloadURL({
 });
 
 const latestIosUrl = await getExpoGoDownloadURL({ platform: 'ios' });
+```
+
+The same version discovery is available as a typed API:
+
+```ts
+import { getExpoGoVersions } from 'expo-go';
+
+const versions = await getExpoGoVersions({ platform: 'ios', stable: true, limit: 3 });
+// Array<{ sdkVersion: number; version: string; url: string }>
 ```
 
 ## Development
